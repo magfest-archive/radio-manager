@@ -263,11 +263,14 @@ complete_radios = functools.partial(complete, lambda: [str(k) for k in RADIOS.ke
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n')).lower().startswith('y')
 get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
 get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, lambda: [str(k) for k in RADIOS], fix=add_radio, fixmsg='Add this radio? (y/n) ')
-get_person = functools.partial(get_value, 'Borrower (name or barcode): ', 'Enter a name!', complete_person, validator=bool)
+get_person = functools.partial(get_value, 'Borrower (skip for department): ', 'Enter a name!', complete_person)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ')
 
 def lookup_badge(number):
     raise NotImplementedError()
+
+def confirm_except(e):
+    return get_bool(colored(str(e), 'red', attrs=['bold']) + ' -- Continue anyway? ')
 
 def do_checkout():
     args = (get_radio(), get_dept())
@@ -288,30 +291,33 @@ def do_checkout():
     while True:
         try:
             checkout_radio(*args, overrides=overrides, **kwargs)
+            cprint('Checked out Radio #{} to {}'.format(args[0], kwargs['name']), 'green')
             return True
         except RadioNotFound as e:
-            if get_bool(str(e) + "; Check out anyway?"):
+            if confirm_except(e):
                 add_radio(args[0])
             else:
                 return False
-        except RadioUnavailable as e:
-            if get_bool(str(e) + "; Check out anyway?"):
-                overrides.append(ALLOW_DOUBLE_CHECKOUT)
-            else:
-                return False
-        except HeadsetUnavailable as e:
-            if get_bool(str(e) + "; Check out anyway?"):
-                overrides.append(ALLOW_NEGATIVE_HEADSETS)
-            else:
-                return False
-        except DepartmentOverLimit as e:
-            if get_bool(str(e), '; Check out anyway?'):
-                overrides.append(ALLOW_DEPARTMENT_OVERDRAFT)
+        except OverrideException as e:
+            if confirm_except(e):
+                overrides.append(e.override)
             else:
                 return False
 
 def do_checkin():
-    pass
+    args = (get_radio(), get_headset())
+    overrides=[]
+
+    while True:
+        try:
+            return_radio(*args, overrides=overrides)
+            cprint('Radio #{} returned by {}'.format(args[0], kwargs['name']), 'green')
+            return True
+        except OverrideException as e:
+            if get_bool(colored(str(e), 'red') + "; Check out anyway?"):
+                overrides.append(override)
+            else:
+                return False
 
 def main_menu():
     cprint("===== Actions =====", 'blue')
@@ -320,7 +326,8 @@ def main_menu():
     print(" {}. Show Help".format(colored('?', 'cyan')))
     print(" {}. Exit".format(colored('X', 'cyan')))
     print()
-    print(colored("You can use Tab to auto-complete options for some fields", attrs=['bold']))
+    cprint("You can use Tab to auto-complete options for most fields", attrs=['bold'])
+    print("Press " + colored('Ctrl+C', 'red') + ' to cancel any action and return to the menu.')
     return True
 
 ACTIONS = {
@@ -336,27 +343,33 @@ ACTIONS = {
     "ci": do_checkin,
     "co": do_checkout,
     "?": main_menu,
+    '': main_menu,
 }
 
 complete_actions = functools.partial(complete, ACTIONS.keys)
-get_action = functools.partial(get_value, '> ', 'Action not found', complete_actions, options=ACTIONS.keys)
+get_action = functools.partial(get_value, '> ', 'Action not found. Type \'?\' for help.', complete_actions, options=ACTIONS.keys)
 
 def main():
-    try:
-        configure('config.json')
-        readline.parse_and_bind('tab: complete')
-        main_menu()
+    configure('config.json')
+    readline.parse_and_bind('tab: complete')
+    main_menu()
 
-        while True:
-            try:
-                if ACTIONS[get_action()]():
-                    pass
-                else:
+    while True:
+        try:
+            while True:
+                action = get_action()
+                try:
+                    if ACTIONS[action]():
+                        pass
+                    else:
+                        print()
+                        cprint('Canceled', 'yellow')
+                except KeyboardInterrupt:
+                    print()
                     cprint('Canceled', 'yellow')
-            except KeyboardInterrupt:
-                cprint('Canceled', 'yellow')
-    except KeyboardInterrupt:
-        pass
+        except KeyboardInterrupt:
+            print()
+            cprint('Type \'X\' to exit.', 'yellow')
 
 if __name__ == '__main__':
     main()
