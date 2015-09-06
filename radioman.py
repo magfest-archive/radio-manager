@@ -1,8 +1,9 @@
-from termcolor import cprint
+from termcolor import cprint, colored
 import functools
 import readline
 import json
 import time
+import sys
 
 CONFIG = {}
 
@@ -196,33 +197,29 @@ def configure(f):
         LIMITS[name] = dept.get('limit', UNLIMITED)
 
 def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=None, fixmsg=None):
-    readline.set_completer(completer)
-
     if callable(options):
         options = options()
 
     value = None
 
     while True:
+        readline.set_completer(completer)
         value = input(prompt)
 
         if (not options or value in options) and \
            (not validator or validator(value)):
             return value
         else:
+            cprint(errmsg, 'red')
             if fix:
                 if fixmsg:
-                    do_fix = get_value(fixmsg, 'Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'))
+                    do_fix = get_value(colored(fixmsg, 'yellow'), 'Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'))
                     if do_fix.startswith('y'):
                         fix(value)
                         return value
-                    else:
-                        cprint(errmsg, 'red')
                 else:
                     fix(value)
                     return value
-            else:
-                cprint(errmsg, 'red')
 
 def add_dept(name):
     LIMITS[name] = {'limit': None}
@@ -264,11 +261,10 @@ complete_out_radios = functools.partial(complete, lambda: [str(k) for k,v in RAD
 complete_radios = functools.partial(complete, lambda: [str(k) for k in RADIOS.keys()])
 
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n')).lower().startswith('y')
-get_headset = functools.partial(get_bool, 'Headset? y/n')
-get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, lambda: [str(k) for k in RADIOS], fix=add_radio, fixmsg='Add this radio?')
+get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
+get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, lambda: [str(k) for k in RADIOS], fix=add_radio, fixmsg='Add this radio? (y/n) ')
 get_person = functools.partial(get_value, 'Borrower (name or barcode): ', 'Enter a name!', complete_person, validator=bool)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ')
-get_badge = functools.partial(get_value, 'Badge Number: ', 'Invalid Badge Number')
 
 def lookup_badge(number):
     raise NotImplementedError()
@@ -277,7 +273,7 @@ def do_checkout():
     args = (get_radio(), get_dept())
     kwargs = {'headset': get_headset()}
     who = get_person()
-    if who.is_numeric():
+    if who.isnumeric():
         try:
             name = lookup_badge(who)
             kwargs['name'] = name
@@ -318,9 +314,13 @@ def do_checkin():
     pass
 
 def main_menu():
-    print("===== Actions =====")
-    print(" 1. Check Out Radio")
-    print(" 2. Check In Radio")
+    cprint("===== Actions =====", 'blue')
+    print(" {}. Check Out Radio".format(colored('1', 'cyan')))
+    print(" {}. Check In Radio".format(colored('2', 'cyan')))
+    print(" {}. Show Help".format(colored('?', 'cyan')))
+    print(" {}. Exit".format(colored('X', 'cyan')))
+    print()
+    print(colored("You can use Tab to auto-complete options for some fields", attrs=['bold']))
     return True
 
 ACTIONS = {
@@ -329,6 +329,10 @@ ACTIONS = {
     "Return": do_checkin,
     "1": do_checkout,
     "2": do_checkin,
+    "X": sys.exit,
+    "Q": sys.exit,
+    "x": sys.exit,
+    "q": sys.exit,
     "ci": do_checkin,
     "co": do_checkout,
     "?": main_menu,
@@ -341,10 +345,10 @@ def main():
     try:
         configure('config.json')
         readline.parse_and_bind('tab: complete')
+        main_menu()
 
         while True:
             try:
-                main_menu()
                 if ACTIONS[get_action()]():
                     pass
                 else:
