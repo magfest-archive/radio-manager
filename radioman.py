@@ -33,23 +33,26 @@ HEADSETS = 0
 class RadioNotFound(Exception):
     pass
 
-class RadioUnavailable(Exception):
-    pass
+class OverrideException(Exception):
+    override = None
 
-class HeadsetUnavailable(Exception):
-    pass
+class RadioUnavailable(OverrideException):
+    override = ALLOW_DOUBLE_CHECKOUT
 
-class HeadsetRequired(Exception):
-    pass
+class HeadsetUnavailable(OverrideException):
+    override = ALLOW_NEGATIVE_HEADSETS
 
-class UnexpectedHeadset(Exception):
-    pass
+class HeadsetRequired(OverrideException):
+    override = ALLOW_MISSING_HEADSET
 
-class NotCheckedOut(Exception):
-    pass
+class UnexpectedHeadset(OverrideException):
+    override = ALLOW_EXTRA_HEADSET
 
-class DepartmentOverLimit(Exception):
-    pass
+class NotCheckedOut(OverrideException):
+    override = ALLOW_DOUBLE_RETURN
+
+class DepartmentOverLimit(OverrideException):
+    override = ALLOW_DEPARTMENT_OVERDRAFT
 
 def load_db():
     data = {}
@@ -94,7 +97,7 @@ def department_total(dept):
 def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[]):
     global HEADSETS
     try:
-        radio = RADIOS[id]
+        radio = RADIOS[int(id)]
 
         if radio['status'] == CHECKED_OUT and \
            ALLOW_DOUBLE_CHECKOUT not in overrides:
@@ -131,11 +134,11 @@ def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[])
 
 def return_radio(id, headset=False, overrides=[]):
     try:
-        radio = RADIOS[id]
+        radio = RADIOS[int(id)]
 
         if radio['status'] == CHECKED_IN and \
            ALLOW_DOUBLE_CHECKIN not in overrides:
-            raise AlreadyCheckedIn("Radio was already checked in")
+            raise NotCheckedOut("Radio was already checked in")
 
         if radio['checkout']['headset'] and not headset and \
            ALLOW_MISSING_HEADSET not in overrides:
@@ -232,8 +235,8 @@ def complete(items, text, state):
         return valid[state][valid[state].lower().find(text.lower()):]
 
 def add_radio(id):
-    if id not in RADIOS:
-        RADIOS[id] = {
+    if int(id) not in RADIOS:
+        RADIOS[int(id)] = {
             'status': CHECKED_IN,
             'last_activity': 0,
             'history': [{'status': CHECKED_IN,
