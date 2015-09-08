@@ -1,9 +1,15 @@
+#!/usr/bin/env python
+from __future__ import print_function
+# Compatible with Python 2 and Python 3
 from termcolor import cprint, colored
 import functools
 import readline
 import json
 import time
 import sys
+
+try: input = raw_input
+except NameError: pass
 
 CONFIG = {}
 
