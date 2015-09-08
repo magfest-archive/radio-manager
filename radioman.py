@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function
 # Compatible with Python 2 and Python 3
+# Make sure rpctools is installed for whichever version
+from rpctools.jsonrpc import ServerProxy
 from termcolor import cprint, colored
 import functools
 import readline
@@ -35,6 +37,8 @@ RADIOS = {}
 AUDIT_LOG = []
 
 HEADSETS = 0
+
+UBER = None
 
 class RadioNotFound(Exception):
     pass
@@ -205,6 +209,26 @@ def configure(f):
     for name, dept in CONFIG.get('departments', {}).items():
         LIMITS[name] = dept.get('limit', UNLIMITED)
 
+    save_db()
+
+    global UBER
+    if 'uber' in CONFIG:
+        uber = CONFIG.get('uber', {})
+        key = uber.get('key', './client.key')
+        cert = uber.get('cert', './client.crt')
+        ca_cert = uber.get('ca_cert', './ca.crt')
+        uri = uber.get('uri', 'https://magfest.uber.org/jsonrpc')
+
+        if uber.get('auth', False):
+            UBER = ServerProxy(uri=uri,
+                               key_file=key,
+                               cert_file=cert,
+                               ca_certs=ca_cert)
+        else:
+            UBER = ServerProxy(uri)
+    else:
+        cprint('Security not configured, probably won\'t be able to use barcodes', 'red')
+
 def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=None, fixmsg=None):
     if callable(options):
         options = options()
@@ -275,8 +299,12 @@ get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', 
 get_person = functools.partial(get_value, 'Borrower (skip for department): ', 'Enter a name!', complete_person)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ')
 
-def lookup_badge(number):
-    raise NotImplementedError()
+def lookup_badge(barcode):
+    if UBER:
+        res = UBER.barcode.lookup_attendee_from_barcode(barcode_value=barcode)
+        return res['full_name']
+    else:
+        raise ValueError()
 
 def confirm_except(e):
     return get_bool(colored(str(e), 'red', attrs=['bold']) + ' -- Continue anyway? ')
@@ -285,7 +313,8 @@ def do_checkout():
     args = (get_radio(), get_dept())
     kwargs = {'headset': get_headset()}
     who = get_person()
-    if who.isnumeric():
+    # TOOD: Replace this with a real regex or something
+    if ' ' not in who:
         try:
             name = lookup_badge(who)
             kwargs['name'] = name
