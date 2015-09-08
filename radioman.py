@@ -300,8 +300,8 @@ complete_in_radios = functools.partial(complete, lambda: [str(k) for k,v in RADI
 complete_out_radios = functools.partial(complete, lambda: [str(k) for k,v in RADIOS.items() if v['status'] == CHECKED_OUT])
 complete_radios = functools.partial(complete, lambda: [str(k) for k in RADIOS.keys()])
 
-get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n')).lower().startswith('y')
-get_headset = functools.partial(get_bool, 'Headset? (y/n) ', default='n')
+get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'), default='n').lower().startswith('y')
+get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
 get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, lambda: [str(k) for k in RADIOS], fix=add_radio, fixmsg='Add this radio? (y/n) ')
 get_person = functools.partial(get_value, 'Borrower (skip for department): ', 'Enter a name!', complete_person)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ', empty=True)
