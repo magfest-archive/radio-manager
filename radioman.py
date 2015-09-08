@@ -229,7 +229,7 @@ def configure(f):
     else:
         cprint('Security not configured, probably won\'t be able to use barcodes', 'red')
 
-def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=None, fixmsg=None):
+def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=None, fixmsg=None, empty=False, default=None):
     if callable(options):
         options = options()
 
@@ -238,6 +238,13 @@ def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=
     while True:
         readline.set_completer(completer)
         value = input(prompt)
+
+        if not value.strip():
+            if default is not None:
+                return default
+            elif not empty and '' not in options:
+                cprint('Please enter a value.', 'yellow')
+                continue
 
         if (not options or value in options) and \
            (not validator or validator(value)):
@@ -294,10 +301,10 @@ complete_out_radios = functools.partial(complete, lambda: [str(k) for k,v in RAD
 complete_radios = functools.partial(complete, lambda: [str(k) for k in RADIOS.keys()])
 
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n')).lower().startswith('y')
-get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
+get_headset = functools.partial(get_bool, 'Headset? (y/n) ', default='n')
 get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, lambda: [str(k) for k in RADIOS], fix=add_radio, fixmsg='Add this radio? (y/n) ')
 get_person = functools.partial(get_value, 'Borrower (skip for department): ', 'Enter a name!', complete_person)
-get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ')
+get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ', empty=True)
 
 def lookup_badge(barcode):
     if UBER:
