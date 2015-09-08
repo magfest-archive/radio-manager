@@ -379,6 +379,9 @@ def main():
         except KeyboardInterrupt:
             print()
             cprint('Type \'X\' to exit.', 'yellow')
+        except EOFError:
+            print()
+            sys.exit()
 
 if __name__ == '__main__':
     main()
