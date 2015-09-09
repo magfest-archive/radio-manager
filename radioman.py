@@ -415,7 +415,16 @@ complete_actions = functools.partial(complete, ACTIONS.keys)
 get_action = functools.partial(get_value, '> ', 'Action not found. Type \'?\' for help.', complete_actions, options=ACTIONS.keys)
 
 def main():
-    configure('config.json')
+    conf_file = 'config.json'
+    if len(sys.argv) > 1:
+        if sys.argv[1]:
+            conf_file = sys.argv[1]
+    try:
+        configure(conf_file)
+    except FileNotFoundError:
+        cprint('Config is not found -- make sure {} exists; see config.json.example for help'.format(conf_file), 'red')
+        sys.exit()
+
     readline.parse_and_bind('tab: complete')
     main_menu()
 
