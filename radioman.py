@@ -196,6 +196,7 @@ def return_radio(id, headset=False, overrides=[]):
         raise RadioNotFound("Radio does not exist")
 
 def configure(f):
+    global CONFIG, RADIOS
     with open(f) as conf:
         CONFIG.update(json.load(conf))
 
