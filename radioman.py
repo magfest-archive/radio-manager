@@ -326,12 +326,14 @@ get_dept = functools.partial(get_value, 'Department: ', 'That department does no
 def lookup_badge(barcode):
     if UBER:
         res = UBER.barcode.lookup_attendee_from_barcode(barcode_value=barcode)
+        if 'error' in res:
+            raise ValueError(res['error'])
         return res['full_name']
     else:
-        raise ValueError()
+        raise ValueError('Uber not set up')
 
 def confirm_except(e):
-    return get_bool(colored(str(e), 'red', attrs=['bold']) + ' -- Continue anyway? ')
+    return get_bool(colored(str(e), 'red', attrs=['bold']) + ' -- Continue anyway? (y/n): ')
 
 def do_checkout():
     args = (get_radio(), get_dept())
@@ -343,7 +345,8 @@ def do_checkout():
             name = lookup_badge(who)
             kwargs['name'] = name
             kwargs['badge'] = who
-        except:
+        except Exception as e:
+            cprint('Could not lookup barcode: {}'.format(str(e)), 'red')
             kwargs['badge'] = who
             kwargs['name'] = None
     else:
