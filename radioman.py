@@ -66,21 +66,22 @@ class DepartmentOverLimit(OverrideException):
 
 def load_db():
     data = {}
+    radiofile = CONFIG.get('db', 'radios.json')
     try:
-        with open(CONFIG['db']) as f:
+        with open(radiofile) as f:
             data = json.load(f)
-        global HEADSETS, AUDIT_LOG
+        global HEADSETS, AUDIT_LOG, RADIOS
 
-        RADIOS.update(data.get('radios', {}))
+        RADIOS = data.get('radios', {})
 
         HEADSETS = data.get('headsets', 0)
         AUDIT_LOG = data.get('audits', [])
     except FileNotFoundError:
-        with open(CONFIG['db'], 'w') as f:
+        with open(radiofile, 'w') as f:
             json.dump({}, f)
 
 def save_db():
-    with open(CONFIG['db'], 'w') as f:
+    with open(CONFIG.get('db', 'radios.json'), 'w') as f:
         json.dump({'radios': RADIOS, 'headsets': HEADSETS, 'audits': AUDIT_LOG}, f)
 
 def apply_audit(override, radio, borrower, lender, description=''):
@@ -107,7 +108,7 @@ def department_total(dept):
 def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[]):
     global HEADSETS
     try:
-        radio = RADIOS[int(id)]
+        radio = RADIOS[id]
 
         if radio['status'] == CHECKED_OUT and \
            ALLOW_DOUBLE_CHECKOUT not in overrides:
@@ -144,7 +145,7 @@ def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[])
 
 def return_radio(id, headset=False, overrides=[]):
     try:
-        radio = RADIOS[int(id)]
+        radio = RADIOS[id]
 
         if radio['status'] == CHECKED_IN and \
            ALLOW_DOUBLE_CHECKIN not in overrides:
@@ -171,6 +172,8 @@ def return_radio(id, headset=False, overrides=[]):
 
         radio['history'].append(radio['checkout'])
 
+        RADIOS[id] = radio
+
         if headset:
             global HEADSETS
             HEADSETS += 1
@@ -185,7 +188,7 @@ def configure(f):
     load_db()
 
     for radio in CONFIG.get('radios', []):
-        if radio not in RADIOS:
+        if str(radio) not in RADIOS:
             RADIOS[radio] = {
                 'status': CHECKED_IN,
                 'last_activity': 0,
@@ -272,8 +275,8 @@ def complete(items, text, state):
         return valid[state][valid[state].lower().find(text.lower()):]
 
 def add_radio(id):
-    if int(id) not in RADIOS:
-        RADIOS[int(id)] = {
+    if id not in RADIOS:
+        RADIOS[id] = {
             'status': CHECKED_IN,
             'last_activity': 0,
             'history': [{'status': CHECKED_IN,
@@ -296,13 +299,13 @@ def add_radio(id):
 complete_dept = functools.partial(complete, LIMITS.keys)
 complete_person = functools.partial(complete, [
     hist['borrower'] for radio in RADIOS.values() for hist in radio.get('history', []) if hist['borrower']])
-complete_in_radios = functools.partial(complete, lambda: [str(k) for k,v in RADIOS.items() if v['status'] == CHECKED_IN])
-complete_out_radios = functools.partial(complete, lambda: [str(k) for k,v in RADIOS.items() if v['status'] == CHECKED_OUT])
-complete_radios = functools.partial(complete, lambda: [str(k) for k in RADIOS.keys()])
+complete_in_radios = functools.partial(complete, lambda: [k for k,v in RADIOS.items() if v['status'] == CHECKED_IN])
+complete_out_radios = functools.partial(complete, lambda: [k for k,v in RADIOS.items() if v['status'] == CHECKED_OUT])
+complete_radios = functools.partial(complete, RADIOS.keys)
 
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'), default='n').lower().startswith('y')
 get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
-get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, lambda: [str(k) for k in RADIOS], fix=add_radio, fixmsg='Add this radio? (y/n) ')
+get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, RADIOS.keys, fix=add_radio, fixmsg='Add this radio? (y/n) ')
 get_person = functools.partial(get_value, 'Borrower (skip for department): ', 'Enter a name!', complete_person)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ', empty=True)
 
