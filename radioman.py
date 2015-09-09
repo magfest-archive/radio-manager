@@ -233,14 +233,12 @@ def configure(f):
         uber = CONFIG.get('uber', {})
         key = uber.get('key', './client.key')
         cert = uber.get('cert', './client.crt')
-        ca_cert = uber.get('ca_cert', './ca.crt')
         uri = uber.get('uri', 'https://magfest.uber.org/jsonrpc')
 
         if uber.get('auth', False):
             UBER = ServerProxy(uri=uri,
                                key_file=key,
-                               cert_file=cert,
-                               ca_certs=ca_cert)
+                               cert_file=cert)
         else:
             UBER = ServerProxy(uri)
     else:
