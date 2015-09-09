@@ -379,7 +379,7 @@ def do_checkin():
             cprint('Radio #{} returned by {}'.format(args[0], kwargs['name']), 'green')
             return True
         except OverrideException as e:
-            if get_bool(colored(str(e), 'red') + "; Check out anyway?"):
+            if confirm_except(e):
                 overrides.append(e.override)
             else:
                 return False
