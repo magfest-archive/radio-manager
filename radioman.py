@@ -380,7 +380,7 @@ def do_checkin():
             return True
         except OverrideException as e:
             if get_bool(colored(str(e), 'red') + "; Check out anyway?"):
-                overrides.append(override)
+                overrides.append(e.override)
             else:
                 return False
 
