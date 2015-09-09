@@ -95,3 +95,6 @@ tramp
 # cask packages
 .cask/
 
+*.crt
+*.key
+*.pem
