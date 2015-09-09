@@ -64,6 +64,16 @@ class NotCheckedOut(OverrideException):
 class DepartmentOverLimit(OverrideException):
     override = ALLOW_DEPARTMENT_OVERDRAFT
 
+def log(*fields):
+    logfile = CONFIG.get('log', 'radios.log')
+    with open(logfile, 'a+') as f:
+        f.write(','.join((str(f) for f in fields)) + '\n')
+
+def log_audit(*fields):
+    logfile = CONFIG.get('audit_log', 'audits.log')
+    with open(logfile, 'a+') as f:
+        f.write(','.join((str(f) for f in fields)) + '\n')
+
 def load_db():
     data = {}
     radiofile = CONFIG.get('db', 'radios.json')
@@ -93,6 +103,7 @@ def apply_audit(override, radio, borrower, lender, description=''):
         'type': override,
         'description': description,
     })
+    log_audit(override, time.time(), radio, borrower, lender, description.replace(',', '\\,'))
 
 def department_total(dept):
     radio_count = 0
@@ -139,6 +150,7 @@ def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[])
         if headset:
             HEADSETS -= 1
 
+        log(CHECKED_OUT, radio['last_activity'], id, name, badge, dept, headset)
         save_db()
     except IndexError:
         raise RadioNotFound("Radio does not exist")
@@ -177,7 +189,9 @@ def return_radio(id, headset=False, overrides=[]):
         if headset:
             global HEADSETS
             HEADSETS += 1
-        
+
+        log(CHECKED_IN, radio['last_activity'], id, name, badge, dept, headset)
+        save_db()
     except IndexError:
         raise RadioNotFound("Radio does not exist")
 
