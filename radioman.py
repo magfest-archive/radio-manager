@@ -9,6 +9,7 @@ import readline
 import json
 import time
 import sys
+import re
 
 try: input = raw_input
 except NameError: pass
@@ -18,6 +19,8 @@ CONFIG = {}
 LIMITS = {}
 
 UNLIMITED = None
+
+BARCODE_RE = re.compile('^[A-Za-z+=-]{6}$')
 
 CHECKED_IN = 'CHECKED_IN'
 CHECKED_OUT = 'CHECKED_OUT'
@@ -116,7 +119,7 @@ def department_total(dept):
                 headset_count += 1
     return (radio_count, headset_count)
 
-def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[]):
+def checkout_radio(id, dept, name=None, badge=None, barcode=None, headset=False, overrides=[]):
     global HEADSETS
     try:
         radio = RADIOS[id]
@@ -125,7 +128,7 @@ def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[])
            ALLOW_DOUBLE_CHECKOUT not in overrides:
             raise RadioUnavailable("Already checked out")
 
-        if headset and HEADSETS == 0 and \
+        if headset and HEADSETS <= 0 and \
            ALLOW_NEGATIVE_HEADSETS not in overrides:
             raise HeadsetUnavailable("No headsets left")
 
@@ -143,6 +146,7 @@ def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[])
             'borrower': name,
             'department': dept,
             'badge': badge,
+            'barcode': barcode,
             'headset': headset,
         }
         radio['history'].append(radio['checkout'])
@@ -155,7 +159,7 @@ def checkout_radio(id, dept, name=None, badge=None, headset=False, overrides=[])
     except IndexError:
         raise RadioNotFound("Radio does not exist")
 
-def return_radio(id, headset=False, overrides=[]):
+def return_radio(id, headset, barcode=None, name=None, badge=None, overrides=[]):
     try:
         radio = RADIOS[id]
 
@@ -180,6 +184,7 @@ def return_radio(id, headset=False, overrides=[]):
             'department': None,
             'badge': None,
             'headset': None,
+            'barcode': None,
         }
 
         radio['history'].append(radio['checkout'])
@@ -312,6 +317,7 @@ def add_radio(id):
 complete_dept = functools.partial(complete, LIMITS.keys)
 complete_person = functools.partial(complete, [
     hist['borrower'] for radio in RADIOS.values() for hist in radio.get('history', []) if hist['borrower']])
+complete_operator = functools.partial(complete, lambda: (l['lender'] for l in AUDIT_LOG if 'lender' in l and l['lender']))
 complete_in_radios = functools.partial(complete, lambda: [k for k,v in RADIOS.items() if v['status'] == CHECKED_IN])
 complete_out_radios = functools.partial(complete, lambda: [k for k,v in RADIOS.items() if v['status'] == CHECKED_OUT])
 complete_radios = functools.partial(complete, RADIOS.keys)
@@ -319,66 +325,95 @@ complete_radios = functools.partial(complete, RADIOS.keys)
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'), default='n').lower().startswith('y')
 get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
 get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, RADIOS.keys, fix=add_radio, fixmsg='Add this radio? (y/n) ')
-get_person = functools.partial(get_value, 'Borrower (skip for department): ', 'Enter a name!', complete_person)
+get_person = functools.partial(get_value, 'Name or barcode (skip for department): ', 'Enter a name!', complete_person)
+get_operator = functools.partial(get_value, 'Enter your name: ', 'Enter your name!', complete_operator, empty=True)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ', empty=True)
+get_desc = functools.partial(get_value, 'Describe why, if necessary: ', '', None, empty=True)
 
 def lookup_badge(barcode):
     if UBER:
         res = UBER.barcode.lookup_attendee_from_barcode(barcode_value=barcode)
         if 'error' in res:
             raise ValueError(res['error'])
-        return res['full_name']
+        return res['full_name'], res['badge_num']
     else:
         raise ValueError('Uber not set up')
 
-def confirm_except(e):
-    return get_bool(colored(str(e), 'red', attrs=['bold']) + ' -- Continue anyway? (y/n): ')
+def get_person_info():
+    barcode, name, badge = None, None, None
+
+    data = get_person()
+    if BARCODE_RE.match(data.strip()):
+        barcode = data
+        while True:
+            try:
+                name, badge = lookup_badge(barcode)
+            except IOError as e:
+                if confirm_except(e, msg=' -- Retry? (y/n): '):
+                    continue
+                else:
+                    cprint('Unable to fetch name; using barcode only.', 'yellow')
+                    break
+    else:
+        name = data
+
+    return barcode, name, badge
+
+def confirm_except(e, msg=' -- Continue anyway? (y/n): '):
+    return get_bool(colored(str(e), 'red', attrs=['bold']) + msg)
 
 def do_checkout():
-    args = (get_radio(), get_dept())
-    kwargs = {'headset': get_headset()}
-    who = get_person()
-    # TOOD: Replace this with a real regex or something
-    if ' ' not in who:
-        try:
-            name = lookup_badge(who)
-            kwargs['name'] = name
-            kwargs['badge'] = who
-        except Exception as e:
-            cprint('Could not lookup barcode: {}'.format(str(e)), 'red')
-            kwargs['badge'] = who
-            kwargs['name'] = None
-    else:
-        kwargs['name'] = who
-        kwargs['badge'] = None
+    id = get_radio()
+    dept = get_dept()
+    headset = get_headset()
+    barcode, name, badge = get_person_info()
+
+    args = (id, dept)
+    kwargs = {
+        'headset': headset,
+        'barcode': barcode,
+        'name': name,
+        'badge': badge,
+    }
+
     overrides = []
     while True:
         try:
             checkout_radio(*args, overrides=overrides, **kwargs)
-            cprint('Checked out Radio #{} to {}'.format(args[0], kwargs['name']), 'green')
+            cprint('Checked out Radio #{} to {}'.format(id, name), 'green')
             return True
         except RadioNotFound as e:
             if confirm_except(e):
-                add_radio(args[0])
+                add_radio(id)
             else:
                 return False
         except OverrideException as e:
             if confirm_except(e):
+                apply_audit(e.override, id, name, get_operator(), get_desc())
                 overrides.append(e.override)
             else:
                 return False
 
 def do_checkin():
-    args = (get_radio(), get_headset())
-    overrides=[]
+    id = get_radio()
+    headset = get_headset()
+    barcode, name, badge = get_person_info()
+
+    args = (id, headset)
+    kwargs = {
+        'barcode': barcode,
+        'name': name,
+        'badge': badge,
+    }
 
     while True:
         try:
-            return_radio(*args, overrides=overrides)
-            cprint('Radio #{} returned by {}'.format(args[0], kwargs['name']), 'green')
+            return_radio(*args, overrides=overrides, **kwargs)
+            cprint('Radio #{} returned by {}'.format(id, name), 'green')
             return True
         except OverrideException as e:
             if confirm_except(e):
+                apply_audit(e.override, id, name, get_operator(), get_desc())
                 overrides.append(e.override)
             else:
                 return False
