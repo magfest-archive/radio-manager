@@ -5,6 +5,7 @@ from __future__ import print_function
 from rpctools.jsonrpc import ServerProxy
 from termcolor import cprint, colored
 import functools
+import datetime
 import readline
 import json
 import time
@@ -418,12 +419,28 @@ def do_checkin():
             else:
                 return False
 
+def radio_status():
+    print("Headsets: {} / {}".format(HEADSETS, CONFIG.get('headsets', 0)))
+    print('{0:3s}   {1:12s}   {2:10s}   {3:15s}   {4:20s}   {5:7s}'.format(
+        'ID', 'Status', 'Since', 'Department', 'Name', 'Headset'
+    ))
+    for id, status in sorted(RADIOS.items(), key=lambda k:int(k[0])):
+        print('{0:>3s}   {1}   {2:10s}   {3:15s}   {4:20s}   {5:7s}'.format(
+            id,
+            colored('{0:11s}'.format(status['status'].replace('_', ' ').title()), 'green' if status['status'] == CHECKED_IN else 'red'),
+            datetime.datetime.fromtimestamp(status['last_activity']).strftime('%H:%M %a') if status['last_activity'] else '-',
+            status['checkout']['department'] or '-',
+            status['checkout']['borrower'] or '-',
+            ('Yes' if status.get('checkout', {}).get('headset', False) else 'No')
+        ))
+
 def main_menu():
     cprint("===== Actions =====", 'blue')
-    print(" {}. Check Out Radio".format(colored('1', 'cyan')))
-    print(" {}. Check In Radio".format(colored('2', 'cyan')))
-    print(" {}. Show Help".format(colored('?', 'cyan')))
-    print(" {}. Exit".format(colored('X', 'cyan')))
+    print(" {0}. Check Out Radio".format(colored('1', 'cyan')))
+    print(" {0}. Check In Radio".format(colored('2', 'cyan')))
+    print(" {0}. Radio Status".format(colored('3', 'cyan')))
+    print(" {0}. Show Help".format(colored('?', 'cyan')))
+    print(" {0}. Exit".format(colored('X', 'cyan')))
     print()
     cprint("You can use Tab to auto-complete options for most fields", attrs=['bold'])
     print("Press " + colored('Ctrl+C', 'red') + ' to cancel any action and return to the menu.')
@@ -433,8 +450,10 @@ ACTIONS = {
     "Check out": do_checkout,
     "Check in": do_checkin,
     "Return": do_checkin,
+    "Status": radio_status,
     "1": do_checkout,
     "2": do_checkin,
+    "3": radio_status,
     "X": sys.exit,
     "Q": sys.exit,
     "x": sys.exit,
