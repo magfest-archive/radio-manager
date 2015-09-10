@@ -21,7 +21,7 @@ LIMITS = {}
 
 UNLIMITED = None
 
-BARCODE_RE = re.compile('^[A-Za-z+=-]{6}$')
+BARCODE_RE = re.compile('^[A-Za-z0-9+=-]{6}$')
 
 CHECKED_IN = 'CHECKED_IN'
 CHECKED_OUT = 'CHECKED_OUT'
@@ -36,9 +36,12 @@ ALLOW_NEGATIVE_HEADSETS = 'ALLOW_NEGATIVE_HEADSETS'
 
 ALLOW_DEPARTMENT_OVERDRAFT = 'ALLOW_DEPARTMENT_OVERDRAFT'
 
+ALLOW_WRONG_PERSON = 'ALLOW_WRONG_PERSON'
+
 RADIOS = {}
 
 AUDIT_LOG = []
+LAST_OPER = None
 
 HEADSETS = 0
 
@@ -67,6 +70,9 @@ class NotCheckedOut(OverrideException):
 
 class DepartmentOverLimit(OverrideException):
     override = ALLOW_DEPARTMENT_OVERDRAFT
+
+class WrongPerson(OverrideException):
+    override = ALLOW_WRONG_PERSON
 
 def log(*fields):
     logfile = CONFIG.get('log', 'radios.log')
@@ -108,6 +114,9 @@ def apply_audit(override, radio, borrower, lender, description=''):
         'description': description,
     })
     log_audit(override, time.time(), radio, borrower, lender, description.replace(',', '\\,'))
+
+    global LAST_OPER
+    LAST_OPER = lender
 
 def department_total(dept):
     radio_count = 0
@@ -167,13 +176,14 @@ def return_radio(id, headset, barcode=None, name=None, badge=None, overrides=[])
         if radio['status'] == CHECKED_IN and \
            ALLOW_DOUBLE_CHECKIN not in overrides:
             raise NotCheckedOut("Radio was already checked in")
-
-        if radio['checkout']['headset'] and not headset and \
+        elif radio['checkout']['headset'] and not headset and \
            ALLOW_MISSING_HEADSET not in overrides:
             raise HeadsetRequired("Radio was checked out with headset")
         elif headset and not radio['checkout']['headset'] and \
              ALLOW_EXTRA_HEADSET not in overrides:
             raise UnexpectedHeadset("Radio was not checked out with headset")
+        elif name != radio['checkout']['borrower']:
+            raise WrongPerson("Radio was checked out by '{}'".format(radio['checkout']['borrower']))
 
         radio['status'] = CHECKED_IN
         radio['last_activity'] = time.time()
@@ -181,11 +191,11 @@ def return_radio(id, headset, barcode=None, name=None, badge=None, overrides=[])
         radio['checkout'] = {
             'status': radio['status'],
             'time': radio['last_activity'],
-            'borrower': None,
+            'borrower': name,
             'department': None,
-            'badge': None,
+            'badge': badge,
             'headset': None,
-            'barcode': None,
+            'barcode': barcode,
         }
 
         radio['history'].append(radio['checkout'])
@@ -196,7 +206,7 @@ def return_radio(id, headset, barcode=None, name=None, badge=None, overrides=[])
             global HEADSETS
             HEADSETS += 1
 
-        log(CHECKED_IN, radio['last_activity'], id, name, badge, dept, headset)
+        log(CHECKED_IN, radio['last_activity'], id, '', '', '', headset)
         save_db()
     except IndexError:
         raise RadioNotFound("Radio does not exist")
@@ -254,6 +264,12 @@ def configure(f):
 def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=None, fixmsg=None, empty=False, default=None):
     if callable(options):
         options = options()
+
+    if callable(default):
+        default = default()
+
+    if callable(prompt):
+        prompt = prompt()
 
     value = None
 
@@ -326,8 +342,9 @@ complete_radios = functools.partial(complete, RADIOS.keys)
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'), default='n').lower().startswith('y')
 get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
 get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, RADIOS.keys, fix=add_radio, fixmsg='Add this radio? (y/n) ')
+get_out_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_out_radios, RADIOS.keys, fix=add_radio, fixmsg='Add this radio? (y/n) ')
 get_person = functools.partial(get_value, 'Name or barcode (skip for department): ', 'Enter a name!', complete_person)
-get_operator = functools.partial(get_value, 'Enter your name: ', 'Enter your name!', complete_operator, empty=True)
+get_operator = functools.partial(get_value, lambda: 'Your name [' + (LAST_OPER or '') + ']: ', 'Enter your name!', complete_operator, empty=True, default=lambda: LAST_OPER)
 get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ', empty=True)
 get_desc = functools.partial(get_value, 'Describe why, if necessary: ', '', None, empty=True)
 
@@ -349,7 +366,8 @@ def get_person_info():
         while True:
             try:
                 name, badge = lookup_badge(barcode)
-            except IOError as e:
+                break
+            except OSError as e:
                 if confirm_except(e, msg=' -- Retry? (y/n): '):
                     continue
                 else:
@@ -364,6 +382,8 @@ def confirm_except(e, msg=' -- Continue anyway? (y/n): '):
     return get_bool(colored(str(e), 'red', attrs=['bold']) + msg)
 
 def do_checkout():
+    cprint('== Checking out ==', 'cyan')
+
     id = get_radio()
     dept = get_dept()
     headset = get_headset()
@@ -396,7 +416,9 @@ def do_checkout():
                 return False
 
 def do_checkin():
-    id = get_radio()
+    cprint('== Checking in ==', 'cyan')
+
+    id = get_out_radio()
     headset = get_headset()
     barcode, name, badge = get_person_info()
 
@@ -407,6 +429,7 @@ def do_checkin():
         'badge': badge,
     }
 
+    overrides = []
     while True:
         try:
             return_radio(*args, overrides=overrides, **kwargs)
@@ -421,7 +444,7 @@ def do_checkin():
 
 def radio_status():
     print("Headsets: {} / {}".format(HEADSETS, CONFIG.get('headsets', 0)))
-    print('{0:3s}   {1:12s}   {2:10s}   {3:15s}   {4:20s}   {5:7s}'.format(
+    print('{0:3s}   {1:11s}   {2:10s}   {3:15s}   {4:20s}   {5:7s}'.format(
         'ID', 'Status', 'Since', 'Department', 'Name', 'Headset'
     ))
     for id, status in sorted(RADIOS.items(), key=lambda k:int(k[0])):
@@ -433,6 +456,8 @@ def radio_status():
             status['checkout']['borrower'] or '-',
             ('Yes' if status.get('checkout', {}).get('headset', False) else 'No')
         ))
+
+    return True
 
 def main_menu():
     cprint("===== Actions =====", 'blue')
