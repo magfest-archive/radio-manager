@@ -288,10 +288,11 @@ def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=
            (not validator or validator(value)):
             return value
         else:
-            cprint(errmsg, 'red')
             if fix:
                 if fixmsg:
+                    cprint(errmsg, 'red')
                     do_fix = get_value(colored(fixmsg, 'yellow'), 'Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'))
+
                     if do_fix.startswith('y'):
                         fix(value)
                         return value
