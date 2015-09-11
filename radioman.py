@@ -280,7 +280,7 @@ def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=
         if not value.strip():
             if default is not None:
                 return default
-            elif not empty and '' not in options:
+            elif not empty and (not options or '' not in options):
                 cprint('Please enter a value.', 'yellow')
                 continue
 
