@@ -341,11 +341,11 @@ complete_radios = functools.partial(complete, RADIOS.keys)
 
 get_bool = lambda q: get_value(prompt=q, errmsg='Please enter \'y\' or \'n\'.', validator=lambda v: v and v.lower()[:1] in ('y', 'n'), default='n').lower().startswith('y')
 get_headset = functools.partial(get_bool, 'Headset? (y/n) ')
-get_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_in_radios, RADIOS.keys, fix=add_radio, fixmsg='Add this radio? (y/n) ')
-get_out_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_out_radios, RADIOS.keys, fix=add_radio, fixmsg='Add this radio? (y/n) ')
+get_radio = functools.partial(get_value, 'Radio ID: ', errmsg='Radio does not exist!', completer=complete_in_radios, options=lambda: RADIOS.keys(), fix=add_radio)
+get_out_radio = functools.partial(get_value, 'Radio ID: ', 'Radio does not exist!', complete_out_radios, lambda: RADIOS.keys(), fix=add_radio, fixmsg='Add this radio? (y/n) ')
 get_person = functools.partial(get_value, 'Name or barcode (skip for department): ', 'Enter a name!', complete_person)
 get_operator = functools.partial(get_value, lambda: 'Your name [' + (LAST_OPER or '') + ']: ', 'Enter your name!', complete_operator, empty=True, default=lambda: LAST_OPER)
-get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, LIMITS.keys, fix=add_dept, fixmsg='Add new department? ', empty=True)
+get_dept = functools.partial(get_value, 'Department: ', 'That department does not exist!', complete_dept, lambda: LIMITS.keys(), fix=add_dept, fixmsg='Add new department? ', empty=True)
 get_desc = functools.partial(get_value, 'Describe why, if necessary: ', '', None, empty=True)
 
 def lookup_badge(barcode):
