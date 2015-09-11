@@ -301,7 +301,7 @@ def get_value(prompt, errmsg, completer=None, options=None, validator=None, fix=
                     return value
 
 def add_dept(name):
-    LIMITS[name] = {'limit': None}
+    LIMITS[name] = None
 
 def complete(items, text, state):
     valid = [item for item in (items() if callable(items) else items) if any((
@@ -374,6 +374,10 @@ def get_person_info():
                 else:
                     cprint('Unable to fetch name; using barcode only.', 'yellow')
                     break
+            except:
+                barcode = None
+                name = data
+                break
     else:
         name = data
 
@@ -505,9 +509,9 @@ def main():
         sys.exit()
 
     readline.parse_and_bind('tab: complete')
-    main_menu()
 
     while True:
+        main_menu()
         try:
             while True:
                 action = get_action()
