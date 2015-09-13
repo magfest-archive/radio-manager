@@ -174,7 +174,7 @@ def return_radio(id, headset, barcode=None, name=None, badge=None, overrides=[])
         radio = RADIOS[id]
 
         if radio['status'] == CHECKED_IN and \
-           ALLOW_DOUBLE_CHECKIN not in overrides:
+           ALLOW_DOUBLE_RETURN not in overrides:
             raise NotCheckedOut("Radio was already checked in")
         elif radio['checkout']['headset'] and not headset and \
            ALLOW_MISSING_HEADSET not in overrides:
